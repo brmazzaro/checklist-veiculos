@@ -81,7 +81,7 @@ function novo() {
     id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     status: 'rascunho', tipo: 'diaria', data: d, mesAno: d.slice(0, 7),
     veiculo: '', placa: '', km: '', condutorAnterior: '', trocaOleo: '', proximaRevisao: '',
-    itens: {}, marks: [], obs: '', fotos: [], assin: { auditor: '', condutor: '', supervisor: '' },
+    itens: {}, marks: [], obs: '', fotos: [], assin: { condutor: '' },
     criado: Date.now(), atualizado: Date.now()
   };
 }
@@ -139,9 +139,20 @@ function showForm() {
   const tipoBtns = TIPOS.map(([k, n]) => h('button', { type: 'button', class: cur.tipo === k ? 'on' : '', onclick: e => {
     cur.tipo = k; tipoBtns.forEach(b => b.classList.remove('on')); e.target.classList.add('on'); autosave();
   } }, n));
+  const fVeic = field('Nº Veículo', 'veiculo', 'text', { inputmode: 'numeric', list: 'listaVeiculos', autocomplete: 'off' });
+  const fPlaca = field('Placa', 'placa', 'text', { autocapitalize: 'characters', maxlength: 8 });
+  const iVeic = fVeic.querySelector('input'), iPlaca = fPlaca.querySelector('input');
+  const aviso = h('small', { style: 'color:var(--mut)' });
+  const buscarPlaca = () => {
+    const n = iVeic.value.trim(), p = VEICULOS[n] || VEICULOS[n.replace(/^0+/, '')];
+    if (p) { iPlaca.value = cur.placa = p; aviso.textContent = 'Placa preenchida pelo cadastro'; autosave(); }
+    else aviso.textContent = n && Object.keys(VEICULOS).length ? 'Veículo não cadastrado – digite a placa' : '';
+  };
+  ['input', 'change', 'blur'].forEach(ev => iVeic.addEventListener(ev, buscarPlaca));
   app.append(h('section', { class: 'card' }, h('h2', null, 'Identificação'),
     h('div', { class: 'seg' }, tipoBtns),
-    h('div', { class: 'row' }, field('Nº Veículo', 'veiculo'), field('Placa', 'placa', 'text', { autocapitalize: 'characters', maxlength: 8 })),
+    h('datalist', { id: 'listaVeiculos' }, Object.keys(VEICULOS).sort((a, b) => a - b).map(n => h('option', { value: n }))),
+    h('div', { class: 'row' }, fVeic, fPlaca), aviso,
     h('div', { class: 'row' }, field('Km', 'km', 'number', { inputmode: 'numeric' }), field('Data da inspeção', 'data', 'date')),
     field('Condutor anterior', 'condutorAnterior'),
     h('div', { class: 'row' }, field('Data mês/ano', 'mesAno', 'month'), field('Data troca do óleo', 'trocaOleo', 'date'))));
@@ -149,11 +160,11 @@ function showForm() {
   // Itens
   const itens = h('section', { class: 'card' }, h('h2', null, 'Itens'),
     h('div', { class: 'warn' }, 'Legenda: C = Conforme · NC = Não conforme · N/A = Não se aplica'));
-  itens.append(h('button', { class: 'btn sec small', type: 'button', onclick: () => {
+  const lista = h('div'); itens.append(lista);
+  itens.append(h('button', { class: 'btn sec', type: 'button', onclick: () => {
     ITENS.forEach((_, i) => { if (!cur.itens[i + 1]) cur.itens[i + 1] = 'C'; });
     renderItens(lista); autosave();
   } }, 'Marcar restantes como Conforme'));
-  const lista = h('div'); itens.append(lista);
   itens.append(h('label', null, 'Próxima revisão conf. KM'), (() => {
     const i = h('input', { type: 'number', inputmode: 'numeric', value: cur.proximaRevisao });
     i.oninput = () => { cur.proximaRevisao = i.value; autosave(); }; return i;
@@ -176,9 +187,7 @@ function showForm() {
 
   // Assinaturas
   app.append(h('section', { class: 'card' }, h('h2', null, 'Assinaturas'),
-    sigPad('Assinatura Auditor', 'auditor'),
-    sigPad('Assinatura Condutor Atual', 'condutor'),
-    sigPad('Assinatura Supervisor/Gerente', 'supervisor')));
+    sigPad('Assinatura Condutor Atual', 'condutor')));
 
   // Ações
   app.append(h('section', { class: 'card' }, h('h2', null, 'Finalizar'),
@@ -210,7 +219,7 @@ function renderItens(box) {
 
 /* ---------- Croqui de avarias ---------- */
 const CROQUI_IMG = new Image();
-CROQUI_IMG.src = 'icons/croqui.jpg';
+CROQUI_IMG.src = typeof CROQUI_DATA === 'string' ? CROQUI_DATA : 'icons/croqui.jpg';
 function desenharCroqui(ctx, marks) {
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, CW, CH);
   if (CROQUI_IMG.complete && CROQUI_IMG.naturalWidth) ctx.drawImage(CROQUI_IMG, 0, 0, CW, CH);
@@ -343,7 +352,7 @@ async function entregarPdf(r, compartilhar) {
     const a = h('a', { href: URL.createObjectURL(blob), download: nome });
     document.body.append(a); a.click(); a.remove();
     toast(compartilhar ? 'Compartilhamento indisponível – PDF baixado' : 'PDF salvo em Downloads');
-  } catch (e) { console.error(e); toast('Erro ao gerar PDF'); }
+  } catch (e) { console.error(e); toast('Erro ao gerar PDF: ' + (e && e.message || e)); }
 }
 
 /* ---------- PDF ---------- */
@@ -395,7 +404,8 @@ function gerarPdf(r) {
   doc.addPage(); y = M;
   txt('Avarias do veículo', M, y + 3, { b: 1, s: 10 }); y += 5;
   const ch = W * CH / CW;
-  doc.addImage(croquiImagem(r.marks), 'JPEG', M, y, W, ch); doc.rect(M, y, W, ch); y += ch + 4;
+  try { doc.addImage(croquiImagem(r.marks), 'JPEG', M, y, W, ch); } catch (e) { console.error(e); txt('(croqui indisponível)', M + 2, y + 6, { s: 8 }); }
+  doc.rect(M, y, W, ch); y += ch + 4;
   txt('Legenda', M, y, { b: 1, s: 8 }); y += 4;
   txt(AVARIAS.map(([k, n]) => `${k} - ${n}`).join('     '), M, y, { s: 8 }); y += 6;
   txt('Observação:', M, y, { b: 1 }); y += 2;
@@ -405,13 +415,10 @@ function gerarPdf(r) {
   y += 2; doc.setFontSize(8); doc.setFont('helvetica', 'bold');
   const av = doc.splitTextToSize(AVISO, W); doc.text(av, M, y); y += av.length * 4 + 4;
   if (y > 225) { doc.addPage(); y = M; }
-  const sw = W / 3 - 2;
-  [['Assinatura Auditor', 'auditor'], ['Assinatura Condutor Atual', 'condutor'], ['Assinatura Supervisor/Gerente', 'supervisor']].forEach(([t, k], i) => {
-    const x = M + i * (sw + 3);
-    doc.rect(x, y, sw, 22);
-    if (r.assin[k]) doc.addImage(r.assin[k], 'PNG', x + 1, y + 1, sw - 2, 20);
-    txt(t, x, y + 26, { b: 1, s: 8 });
-  });
+  const sw = 95;
+  doc.rect(M, y, sw, 24);
+  if (r.assin.condutor) doc.addImage(r.assin.condutor, 'PNG', M + 1, y + 1, sw - 2, 22);
+  txt('Assinatura Condutor Atual', M, y + 28, { b: 1, s: 8 });
   txt(REVISAO, M + W, 292, { s: 7, a: 'right' });
 
   // --- Fotos
@@ -428,6 +435,11 @@ function gerarPdf(r) {
   }
   return doc;
 }
+
+/* ---------- Cadastro de veículos (veiculos.json, gerado de VEÍCULOS.xlsx) ---------- */
+// Lista embutida (garante o funcionamento mesmo sem o arquivo); veiculos.json, se existir, a substitui.
+let VEICULOS = { '18': 'MNO8P156', '27': 'IJK9L101', '38': 'ABC1D234', '54': 'EFG5H678' };
+fetch('veiculos.json').then(r => r.json()).then(j => { if (j && Object.keys(j).length) VEICULOS = j; }).catch(() => {});
 
 /* ---------- Início ---------- */
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
