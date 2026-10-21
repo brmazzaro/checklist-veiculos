@@ -89,39 +89,69 @@ const ncCount = r => ITENS.reduce((n, _, i) => n + (r.itens[i + 1] === 'NC' ? 1 
 
 /* ---------- Navegação ---------- */
 let cur = null, saveT;
-function setTitle(t, back) { $('#title').textContent = t; $('#btnBack').hidden = !back; }
+function setTitle(t, back, sub = '') {
+  $('#title').textContent = t; $('#sub').textContent = sub; $('#sub').hidden = !sub; $('#btnBack').hidden = !back;
+  if (!back) { $('#prog').hidden = true; $('#net').hidden = true; }
+}
 $('#btnBack').onclick = () => flush().then(showList);
 function flush() {
   clearTimeout(saveT);
   if (!cur) return Promise.resolve();
   cur.atualizado = Date.now();
-  return dbPut(cur);
+  return dbPut(cur).then(() => { if (cur && !$('#btnBack').hidden) { const n = $('#net'); n.textContent = 'Salvo ✓'; n.hidden = false; } });
 }
 function autosave() { clearTimeout(saveT); saveT = setTimeout(flush, 500); }
 
+/* ---------- Ícones ---------- */
+const IC = {
+  dados: 'M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z',
+  itens: 'M22 7h-9v2h9V7zm0 8h-9v2h9v-2zM5.54 11L2 7.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 11zm0 8L2 15.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 19z',
+  carro: 'M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z',
+  foto: 'M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z',
+  ok: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
+  voltar: 'M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z',
+  mais: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
+  pdf: 'M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3.5h-1.5v1h1.5v1.5h-1.5V13H18V7h2v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z',
+  lixo: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+  share: 'M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z'
+};
+function icon(k, sz = 24) {
+  const s = document.createElement('span'); s.className = 'ico';
+  s.innerHTML = `<svg viewBox="0 0 24 24" width="${sz}" height="${sz}" fill="currentColor"><path d="${IC[k]}"/></svg>`;
+  return s;
+}
+$('#btnBack').replaceChildren(icon('voltar'));
+const vibra = () => { try { navigator.vibrate && navigator.vibrate(12); } catch {} };
+
 /* ---------- Lista / histórico ---------- */
 async function showList() {
-  cur = null; setTitle('Checklist de Veículos', false);
+  cur = null; setTitle('Checklist de Veículos', false, 'Inspeção de veículos');
   const all = (await dbAll()).sort((a, b) => b.atualizado - a.atualizado);
   const app = $('#app'); app.replaceChildren();
-  const box = h('section', { class: 'card' }, h('h2', null, 'Inspeções'));
-  if (!all.length) box.append(h('div', { class: 'empty' }, 'Nenhuma inspeção ainda.', h('br'), 'Toque em "Nova inspeção" para começar.'));
-  for (const r of all) {
-    const nc = ncCount(r);
-    box.append(h('div', { class: 'hist' },
-      h('div', { class: 'i', onclick: () => abrir(r) },
-        h('b', null, `${r.placa || 'Sem placa'} · ${brData(r.data)}`,
-          h('span', { class: 'tag ' + (r.status === 'final' ? 'ok' : 'dr') }, r.status === 'final' ? 'Concluída' : 'Rascunho'),
-          nc ? h('span', { class: 'tag bad' }, `${nc} NC`) : null),
-        h('small', null, `${TIPOS.find(t => t[0] === r.tipo)[1]}${r.veiculo ? ' · Veíc. ' + r.veiculo : ''} · ${r.fotos.length} foto(s)`)),
-      h('button', { class: 'btn small sec', onclick: () => abrir(r) }, 'Abrir'),
-      h('button', { class: 'btn small', onclick: () => entregarPdf(r, false) }, 'PDF'),
-      h('button', { class: 'btn small danger', 'aria-label': 'Excluir', onclick: async () => { if (confirm('Excluir esta inspeção?')) { await dbDel(r.id); showList(); } } }, '✕')));
+  window.scrollTo(0, 0);
+  if (!all.length) {
+    app.append(h('div', { class: 'empty' }, icon('carro', 96), h('br'), 'Nenhuma inspeção ainda.', h('br'), 'Toque em "Nova inspeção" para começar.'));
+  } else {
+    app.append(h('div', { class: 'hero' }, h('b', null, 'Inspeções'), h('span', null, `${all.length} registro(s) neste aparelho`)));
   }
-  app.append(box, h('button', { class: 'btn fab', onclick: () => abrir(novo()) }, '+ Nova inspeção'));
+  for (const r of all) {
+    const nc = ncCount(r), tipo = TIPOS.find(t => t[0] === r.tipo)[1];
+    app.append(h('div', { class: 'hcard' + (nc ? ' bad' : '') },
+      h('div', { class: 'av' }, r.veiculo || '—'),
+      h('div', { class: 'i', onclick: () => abrir(r) },
+        h('b', null, r.placa || 'Sem placa'),
+        h('small', null, `${brData(r.data)} · ${tipo}`),
+        h('div', { class: 'chips' },
+          h('span', { class: 'tag ' + (r.status === 'final' ? 'ok' : 'dr') }, r.status === 'final' ? 'Concluída' : 'Rascunho'),
+          nc ? h('span', { class: 'tag bad' }, `${nc} NC`) : null,
+          r.fotos.length ? h('span', { class: 'tag' }, `${r.fotos.length} foto(s)`) : null)),
+      h('button', { class: 'ib', 'aria-label': 'Gerar PDF', onclick: () => entregarPdf(r, false) }, icon('pdf')),
+      h('button', { class: 'ib danger', 'aria-label': 'Excluir', onclick: async () => { if (confirm('Excluir esta inspeção?')) { await dbDel(r.id); showList(); } } }, icon('lixo'))));
+  }
+  app.append(h('button', { class: 'fab', onclick: () => abrir(novo()) }, icon('mais'), 'Nova inspeção'));
 }
 
-/* ---------- Formulário ---------- */
+/* ---------- Formulário (em etapas) ---------- */
 function abrir(r) { cur = r; showForm(); }
 
 function field(label, key, type = 'text', extra = {}) {
@@ -130,14 +160,19 @@ function field(label, key, type = 'text', extra = {}) {
   return h('div', null, h('label', null, label), i);
 }
 
-function showForm() {
-  setTitle('Inspeção', true);
-  window.scrollTo(0, 0);
-  const app = $('#app'); app.replaceChildren();
+const ETAPAS = [['Dados', 'dados'], ['Itens', 'itens'], ['Avarias', 'carro'], ['Fotos', 'foto'], ['Finalizar', 'ok']];
+const respondidos = () => ITENS.filter((_, i) => cur.itens[i + 1]).length;
 
-  // Identificação
+function showForm() {
+  const app = $('#app'); app.replaceChildren();
+  let etapa = 0, assinatura;
+  const cab = () => setTitle(ETAPAS[etapa][0], true, `${cur.placa || 'Nova inspeção'}${cur.veiculo ? ' · Veículo ' + cur.veiculo : ''}`);
+  const prog = () => { $('#prog').hidden = false; $('#prog i').style.width = (respondidos() / ITENS.length * 100) + '%'; };
+  const continuar = () => h('button', { class: 'btn', type: 'button', onclick: () => go(etapa + 1) }, 'Continuar');
+
+  /* 1 - Dados */
   const tipoBtns = TIPOS.map(([k, n]) => h('button', { type: 'button', class: cur.tipo === k ? 'on' : '', onclick: e => {
-    cur.tipo = k; tipoBtns.forEach(b => b.classList.remove('on')); e.target.classList.add('on'); autosave();
+    cur.tipo = k; tipoBtns.forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); autosave();
   } }, n));
   const fVeic = field('Nº Veículo', 'veiculo', 'text', { inputmode: 'numeric', list: 'listaVeiculos', autocomplete: 'off' });
   const fPlaca = field('Placa', 'placa', 'text', { autocapitalize: 'characters', maxlength: 8 });
@@ -147,74 +182,107 @@ function showForm() {
     const n = iVeic.value.trim(), p = VEICULOS[n] || VEICULOS[n.replace(/^0+/, '')];
     if (p) { iPlaca.value = cur.placa = p; aviso.textContent = 'Placa preenchida pelo cadastro'; autosave(); }
     else aviso.textContent = n && Object.keys(VEICULOS).length ? 'Veículo não cadastrado – digite a placa' : '';
+    cab();
   };
   ['input', 'change', 'blur'].forEach(ev => iVeic.addEventListener(ev, buscarPlaca));
-  app.append(h('section', { class: 'card' }, h('h2', null, 'Identificação'),
-    h('div', { class: 'seg' }, tipoBtns),
-    h('datalist', { id: 'listaVeiculos' }, Object.keys(VEICULOS).sort((a, b) => a - b).map(n => h('option', { value: n }))),
-    h('div', { class: 'row' }, fVeic, fPlaca), aviso,
-    h('div', { class: 'row' }, field('Km', 'km', 'number', { inputmode: 'numeric' }), field('Data da inspeção', 'data', 'date')),
-    field('Condutor anterior', 'condutorAnterior'),
-    h('div', { class: 'row' }, field('Data mês/ano', 'mesAno', 'month'), field('Data troca do óleo', 'trocaOleo', 'date'))));
+  iPlaca.addEventListener('input', cab);
+  const pDados = h('div', { class: 'page' },
+    h('section', { class: 'card' }, h('h2', null, 'Tipo de inspeção'), h('div', { class: 'seg' }, tipoBtns)),
+    h('section', { class: 'card' }, h('h2', null, 'Veículo'),
+      h('datalist', { id: 'listaVeiculos' }, Object.keys(VEICULOS).sort((a, b) => a - b).map(n => h('option', { value: n }))),
+      h('div', { class: 'row' }, fVeic, fPlaca), aviso,
+      h('div', { class: 'row' }, field('Km', 'km', 'number', { inputmode: 'numeric' }), field('Data da inspeção', 'data', 'date')),
+      field('Condutor anterior', 'condutorAnterior'),
+      h('div', { class: 'row' }, field('Data mês/ano', 'mesAno', 'month'), field('Data troca do óleo', 'trocaOleo', 'date'))),
+    continuar());
 
-  // Itens
-  const itens = h('section', { class: 'card' }, h('h2', null, 'Itens'),
-    h('div', { class: 'warn' }, 'Legenda: C = Conforme · NC = Não conforme · N/A = Não se aplica'));
-  const lista = h('div'); itens.append(lista);
-  itens.append(h('button', { class: 'btn sec', type: 'button', onclick: () => {
-    ITENS.forEach((_, i) => { if (!cur.itens[i + 1]) cur.itens[i + 1] = 'C'; });
-    renderItens(lista); autosave();
-  } }, 'Marcar restantes como Conforme'));
-  itens.append(h('label', null, 'Próxima revisão conf. KM'), (() => {
-    const i = h('input', { type: 'number', inputmode: 'numeric', value: cur.proximaRevisao });
-    i.oninput = () => { cur.proximaRevisao = i.value; autosave(); }; return i;
-  })());
-  OBS_FIXAS.forEach(t => itens.append(h('div', { class: 'warn' }, 'Obs.: ' + t)));
-  itens.append(h('div', { class: 'crit' }, AVISO));
-  app.append(itens);
-  renderItens(lista);
+  /* 2 - Itens */
+  let filtro = 'todos';
+  const sum = h('div', { class: 'sum' }), lista = h('div');
+  const atualizaSum = () => {
+    const nc = ncCount(cur);
+    sum.replaceChildren(h('span', null, h('b', null, `${respondidos()} de ${ITENS.length}`), ' respondidos'),
+      nc ? h('span', { class: 'tag bad' }, `${nc} não conforme(s)`) : h('span', { class: 'tag ok' }, 'Nenhuma NC'));
+    prog();
+  };
+  const linha = (n, nome) => {
+    const row = h('div', { class: 'item' });
+    const desenha = () => {
+      const v = cur.itens[n];
+      row.className = 'item' + (v === 'NC' ? ' nc' : v === 'C' ? ' okk' : '');
+      row.replaceChildren(
+        h('div', { class: 'top' }, h('span', { class: 'n' }, pad2(n)), h('span', { class: 't' }, nome)),
+        h('div', { class: 'opt' }, ['C', 'NC', 'NA'].map(k => h('button', { type: 'button', class: k.toLowerCase() + (v === k ? ' on' : ''), onclick: () => {
+          cur.itens[n] = cur.itens[n] === k ? null : k; vibra(); desenha(); atualizaSum(); autosave();
+        } }, k === 'NA' ? 'N/A' : k))),
+        ...(v === 'NC' ? [h('button', { class: 'chip photo', type: 'button', onclick: () => pegarFoto(`Item ${pad2(n)} - ${nome}`) }, icon('foto', 18), 'Adicionar foto deste item')] : []));
+    };
+    desenha(); return row;
+  };
+  const renderLista = () => {
+    lista.replaceChildren();
+    ITENS.forEach((nome, i) => {
+      const v = cur.itens[i + 1];
+      if ((filtro === 'pend' && v) || (filtro === 'nc' && v !== 'NC')) return;
+      lista.append(linha(i + 1, nome));
+    });
+    if (!lista.children.length) lista.append(h('div', { class: 'empty' }, filtro === 'nc' ? 'Nenhum item não conforme.' : 'Tudo respondido!'));
+  };
+  const chips = [['todos', 'Todos'], ['pend', 'Pendentes'], ['nc', 'Não conformes']].map(([k, n]) =>
+    h('button', { type: 'button', class: 'chip' + (k === filtro ? ' on' : ''), onclick: e => {
+      filtro = k; chips.forEach(c => c.classList.remove('on')); e.currentTarget.classList.add('on'); renderLista();
+    } }, n));
+  const iRev = h('input', { type: 'number', inputmode: 'numeric', value: cur.proximaRevisao });
+  iRev.oninput = () => { cur.proximaRevisao = iRev.value; autosave(); };
+  const pItens = h('div', { class: 'page' },
+    h('div', { class: 'warn' }, 'Legenda: C = Conforme · NC = Não conforme · N/A = Não se aplica'),
+    sum, h('div', { class: 'filters' }, chips), lista,
+    h('button', { class: 'btn sec', type: 'button', onclick: () => {
+      ITENS.forEach((_, i) => { if (!cur.itens[i + 1]) cur.itens[i + 1] = 'C'; });
+      vibra(); renderLista(); atualizaSum(); autosave();
+    } }, 'Marcar restantes como Conforme'),
+    h('section', { class: 'card', style: 'margin-top:14px' }, h('h2', null, 'Próxima revisão'),
+      h('label', null, 'Próxima revisão conf. KM'), iRev,
+      ...OBS_FIXAS.map(t => h('div', { class: 'warn' }, 'Obs.: ' + t)), h('div', { class: 'crit' }, AVISO)),
+    continuar());
+  renderLista(); atualizaSum();
 
-  // Croqui
-  app.append(croquiCard());
-
-  // Observação
+  /* 3 - Avarias e observação */
   const ta = h('textarea', { placeholder: 'Descreva problemas, avarias, ações...' }, cur.obs);
   ta.oninput = () => { cur.obs = ta.value; autosave(); };
-  app.append(h('section', { class: 'card' }, h('h2', null, 'Observação'), ta));
+  const pAvarias = h('div', { class: 'page' }, croquiCard(),
+    h('section', { class: 'card' }, h('h2', null, 'Observação'), ta), continuar());
 
-  // Fotos
-  app.append(fotosCard());
+  /* 4 - Fotos */
+  const pFotos = h('div', { class: 'page' }, fotosCard(), continuar());
 
-  // Assinaturas
-  app.append(h('section', { class: 'card' }, h('h2', null, 'Assinaturas'),
-    sigPad('Assinatura Condutor Atual', 'condutor')));
+  /* 5 - Finalizar */
+  assinatura = sigPad('Assinatura Condutor Atual', 'condutor');
+  const resumo = h('div', { class: 'resumo' });
+  const atualizaResumo = () => {
+    const linhas = [['Veículo / Placa', `${cur.veiculo || '—'} / ${cur.placa || '—'}`], ['Km', cur.km || '—'], ['Data', brData(cur.data)],
+      ['Itens respondidos', `${respondidos()} de ${ITENS.length}`], ['Não conformes', String(ncCount(cur))],
+      ['Avarias marcadas', String(cur.marks.length)], ['Fotos', String(cur.fotos.length)]];
+    resumo.replaceChildren(...linhas.map(([a, b]) => h('div', null, h('span', null, a), h('b', null, b))));
+  };
+  const pFinal = h('div', { class: 'page' },
+    h('section', { class: 'card' }, h('h2', null, 'Resumo'), resumo),
+    h('section', { class: 'card' }, h('h2', null, 'Assinatura'), assinatura),
+    h('button', { class: 'btn', onclick: () => finalizar(false) }, icon('pdf'), 'Concluir e gerar PDF'),
+    h('button', { class: 'btn sec', onclick: () => finalizar(true) }, icon('share'), 'Concluir e compartilhar'),
+    h('button', { class: 'btn sec', onclick: async () => { await flush(); toast('Rascunho salvo'); showList(); } }, 'Salvar rascunho e sair'));
 
-  // Ações
-  app.append(h('section', { class: 'card' }, h('h2', null, 'Finalizar'),
-    h('button', { class: 'btn', onclick: () => finalizar(false) }, 'Concluir e gerar PDF'),
-    h('button', { class: 'btn sec', onclick: () => finalizar(true) }, 'Concluir e compartilhar PDF'),
-    h('button', { class: 'btn sec', onclick: async () => { await flush(); toast('Rascunho salvo'); showList(); } }, 'Salvar rascunho e sair')));
-}
-
-function renderItens(box) {
-  box.replaceChildren();
-  ITENS.forEach((nome, idx) => {
-    const n = idx + 1, v = cur.itens[n];
-    const row = h('div', { class: 'item' + (v === 'NC' ? ' nc' : '') });
-    const set = val => { cur.itens[n] = cur.itens[n] === val ? null : val; renderRow(); autosave(); };
-    const renderRow = () => {
-      const v2 = cur.itens[n];
-      row.className = 'item' + (v2 === 'NC' ? ' nc' : '');
-      row.replaceChildren(
-        h('span', { class: 'n' }, pad2(n)), h('span', { class: 't' }, nome),
-        ...(v2 === 'NC' ? [h('button', { class: 'btn small sec', type: 'button', 'aria-label': 'Foto do item', onclick: () => pegarFoto(`Item ${pad2(n)} - ${nome}`) }, '📷')] : []),
-        h('span', { class: 'opt' },
-          h('button', { type: 'button', class: 'c' + (v2 === 'C' ? ' on' : ''), onclick: () => set('C') }, 'C'),
-          h('button', { type: 'button', class: 'nc' + (v2 === 'NC' ? ' on' : ''), onclick: () => set('NC') }, 'NC'),
-          h('button', { type: 'button', class: 'na' + (v2 === 'NA' ? ' on' : ''), onclick: () => set('NA') }, 'N/A')));
-    };
-    renderRow(); box.append(row);
-  });
+  const paginas = [pDados, pItens, pAvarias, pFotos, pFinal];
+  const nav = h('nav', { class: 'tabs' }, ETAPAS.map(([n, ic], i) => h('button', { type: 'button', onclick: () => go(i) }, icon(ic), h('span', null, n))));
+  function go(i) {
+    etapa = Math.max(0, Math.min(paginas.length - 1, i));
+    paginas.forEach((p, k) => (p.hidden = k !== etapa));
+    [...nav.children].forEach((b, k) => b.classList.toggle('on', k === etapa));
+    if (etapa === 4) { atualizaResumo(); assinatura.fit(); }
+    cab(); prog(); window.scrollTo(0, 0);
+  }
+  app.append(...paginas, nav);
+  go(0);
 }
 
 /* ---------- Croqui de avarias ---------- */
@@ -225,9 +293,9 @@ function desenharCroqui(ctx, marks) {
   if (CROQUI_IMG.complete && CROQUI_IMG.naturalWidth) ctx.drawImage(CROQUI_IMG, 0, 0, CW, CH);
   ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
   for (const mk of marks) {
-    ctx.fillStyle = 'rgba(198,40,40,.92)'; ctx.beginPath(); ctx.arc(mk.x, mk.y, 16, 0, 7); ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 15px sans-serif'; ctx.fillText(mk.t, mk.x, mk.y + 1);
+    ctx.fillStyle = 'rgba(198,40,40,.92)'; ctx.beginPath(); ctx.arc(mk.x, mk.y, 26, 0, 7); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif'; ctx.fillText(mk.t, mk.x, mk.y + 1);
   }
 }
 function croquiImagem(marks) {
@@ -322,10 +390,12 @@ function sigPad(titulo, key) {
   const fim = () => { if (!desenhando) return; desenhando = false; cur.assin[key] = c.toDataURL('image/png'); autosave(); };
   c.onpointerup = fim; c.onpointercancel = fim;
   requestAnimationFrame(() => requestAnimationFrame(ajustar));
-  return h('div', null, h('label', null, titulo), c,
-    h('button', { class: 'btn small sec', type: 'button', style: 'margin-top:6px', onclick: () => {
+  const wrap = h('div', null, h('label', null, titulo), c,
+    h('button', { class: 'btn small sec', type: 'button', style: 'margin-top:10px', onclick: () => {
       const r = c.getBoundingClientRect(); ctx.clearRect(0, 0, r.width, r.height); cur.assin[key] = ''; autosave();
     } }, 'Limpar assinatura'));
+  wrap.fit = () => { if (!ajustado) ajustar(); };
+  return wrap;
 }
 
 /* ---------- Finalizar ---------- */

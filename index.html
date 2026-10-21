@@ -4,20 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#16783c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Checklist de Veículos</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="bar">
-  <button id="btnBack" class="icon" hidden aria-label="Voltar">&#8592;</button>
-  <h1 id="title">Checklist de Veículos</h1>
-  <span id="net" class="net" title="Funciona offline">offline-ready</span>
+  <button id="btnBack" class="icon" hidden aria-label="Voltar"></button>
+  <div class="ttl"><h1 id="title">Checklist de Veículos</h1><small id="sub" hidden></small></div>
+  <span id="net" class="net" hidden></span>
+  <div id="prog" class="prog" hidden><i></i></div>
 </header>
 <main id="app"></main>
 <div id="toast" class="toast" hidden></div>
 <script src="lib/jspdf.umd.min.js"></script>
+<script src="croqui-data.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
