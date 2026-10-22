@@ -80,7 +80,8 @@ function novo() {
   return {
     id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     status: 'rascunho', tipo: 'diaria', data: d, mesAno: d.slice(0, 7),
-    veiculo: '', placa: '', km: '', condutorAnterior: '', trocaOleo: '', proximaRevisao: '',
+    veiculo: '', placa: '', modelo: '', condutor: '', regiao: '', radio: '',
+    km: '', condutorAnterior: '', trocaOleo: '', proximaRevisao: '',
     itens: {}, marks: [], obs: '', fotos: [], assin: { condutor: '' },
     criado: Date.now(), atualizado: Date.now()
   };
@@ -140,6 +141,7 @@ async function showList() {
       h('div', { class: 'av' }, r.veiculo || '—'),
       h('div', { class: 'i', onclick: () => abrir(r) },
         h('b', null, r.placa || 'Sem placa'),
+        h('small', null, [r.modelo, r.condutor].filter(Boolean).join(' · ') || '—'), h('br'),
         h('small', null, `${brData(r.data)} · ${tipo}`),
         h('div', { class: 'chips' },
           h('span', { class: 'tag ' + (r.status === 'final' ? 'ok' : 'dr') }, r.status === 'final' ? 'Concluída' : 'Rascunho'),
@@ -174,23 +176,44 @@ function showForm() {
   const tipoBtns = TIPOS.map(([k, n]) => h('button', { type: 'button', class: cur.tipo === k ? 'on' : '', onclick: e => {
     cur.tipo = k; tipoBtns.forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); autosave();
   } }, n));
-  const fVeic = field('Nº Veículo', 'veiculo', 'text', { inputmode: 'numeric', list: 'listaVeiculos', autocomplete: 'off' });
-  const fPlaca = field('Placa', 'placa', 'text', { autocapitalize: 'characters', maxlength: 8 });
+  const fVeic = field('Nº Veículo (prefixo)', 'veiculo', 'text', { inputmode: 'numeric', list: 'listaVeiculos', autocomplete: 'off' });
+  const fPlaca = field('Placa', 'placa', 'text', { autocapitalize: 'characters', maxlength: 10 });
+  const fModelo = field('Modelo', 'modelo', 'text', { autocapitalize: 'characters' });
+  const fCond = field('Condutor atual', 'condutor');
+  const fRegiao = field('Região', 'regiao');
   const iVeic = fVeic.querySelector('input'), iPlaca = fPlaca.querySelector('input');
   const aviso = h('small', { style: 'color:var(--mut)' });
+  const sel = h('select', null, h('option', { value: '' }, 'Selecione o veículo...'),
+    Object.keys(VEICULOS).sort((a, b) => a - b).map(n => {
+      const v = VEICULOS[n];
+      return h('option', { value: n, selected: n === cur.veiculo }, `${n} · ${v.modelo} · ${v.placa} · ${v.motorista}`);
+    }));
+  sel.onchange = () => { if (sel.value) { iVeic.value = cur.veiculo = sel.value; buscarPlaca(); } };
+  const preenche = (f, k, v) => { cur[k] = v || ''; f.querySelector('input').value = cur[k]; };
+  let ultimo = cur.veiculo; // só preenche de novo quando o nº muda (não apaga edições manuais)
   const buscarPlaca = () => {
-    const n = iVeic.value.trim(), p = VEICULOS[n] || VEICULOS[n.replace(/^0+/, '')];
-    if (p) { iPlaca.value = cur.placa = p; aviso.textContent = 'Placa preenchida pelo cadastro'; autosave(); }
-    else aviso.textContent = n && Object.keys(VEICULOS).length ? 'Veículo não cadastrado – digite a placa' : '';
+    const t = iVeic.value.trim(), n = VEICULOS[t] ? t : t.replace(/^0+/, ''), v = VEICULOS[n];
+    if (v && n !== ultimo) {
+      preenche(fPlaca, 'placa', v.placa); preenche(fModelo, 'modelo', v.modelo);
+      preenche(fCond, 'condutor', v.motorista); preenche(fRegiao, 'regiao', v.regiao); cur.radio = v.radio || '';
+      autosave();
+    }
+    ultimo = n; sel.value = v ? n : '';
+    aviso.textContent = v ? `Dados do cadastro · Rádio PX Motorola: ${v.radio || '—'}`
+      : n && Object.keys(VEICULOS).length ? 'Veículo não cadastrado – preencha os dados' : '';
     cab();
   };
   ['input', 'change', 'blur'].forEach(ev => iVeic.addEventListener(ev, buscarPlaca));
   iPlaca.addEventListener('input', cab);
+  buscarPlaca();
   const pDados = h('div', { class: 'page' },
     h('section', { class: 'card' }, h('h2', null, 'Tipo de inspeção'), h('div', { class: 'seg' }, tipoBtns)),
     h('section', { class: 'card' }, h('h2', null, 'Veículo'),
+      h('label', null, 'Cadastro do Inventário Florestal'), sel,
       h('datalist', { id: 'listaVeiculos' }, Object.keys(VEICULOS).sort((a, b) => a - b).map(n => h('option', { value: n }))),
       h('div', { class: 'row' }, fVeic, fPlaca), aviso,
+      h('div', { class: 'row' }, fModelo, fRegiao),
+      fCond,
       h('div', { class: 'row' }, field('Km', 'km', 'number', { inputmode: 'numeric' }), field('Data da inspeção', 'data', 'date')),
       field('Condutor anterior', 'condutorAnterior'),
       h('div', { class: 'row' }, field('Data mês/ano', 'mesAno', 'month'), field('Data troca do óleo', 'trocaOleo', 'date'))),
@@ -260,7 +283,8 @@ function showForm() {
   assinatura = sigPad('Assinatura Condutor Atual', 'condutor');
   const resumo = h('div', { class: 'resumo' });
   const atualizaResumo = () => {
-    const linhas = [['Veículo / Placa', `${cur.veiculo || '—'} / ${cur.placa || '—'}`], ['Km', cur.km || '—'], ['Data', brData(cur.data)],
+    const linhas = [['Veículo / Placa', `${cur.veiculo || '—'} / ${cur.placa || '—'}`], ['Modelo', cur.modelo || '—'],
+      ['Condutor atual', cur.condutor || '—'], ['Km', cur.km || '—'], ['Data', brData(cur.data)],
       ['Itens respondidos', `${respondidos()} de ${ITENS.length}`], ['Não conformes', String(ncCount(cur))],
       ['Avarias marcadas', String(cur.marks.length)], ['Fotos', String(cur.fotos.length)]];
     resumo.replaceChildren(...linhas.map(([a, b]) => h('div', null, h('span', null, a), h('b', null, b))));
@@ -403,6 +427,7 @@ async function finalizar(compartilhar) {
   const falta = [];
   if (!cur.veiculo.trim()) falta.push('Nº do veículo');
   if (!cur.placa.trim()) falta.push('Placa');
+  if (!(cur.condutor || '').trim()) falta.push('Condutor atual');
   if (!cur.km) falta.push('Km');
   if (falta.length) { toast('Preencha: ' + falta.join(', ')); return; }
   const sem = ITENS.filter((_, i) => !cur.itens[i + 1]).length;
@@ -443,7 +468,8 @@ function gerarPdf(r) {
   cell(M, y, 95, rh, 'Nº Veículo:', r.veiculo); cell(M + 95, y, 95, rh, 'Condutor anterior:', r.condutorAnterior); y += rh;
   cell(M, y, 95, rh, 'Placa:', r.placa); cell(M + 95, y, 95, rh, 'Data mês/ano:', brMes(r.mesAno)); y += rh;
   cell(M, y, 95, rh, 'Km:', r.km); cell(M + 95, y, 95, rh, 'Data troca do óleo:', brData(r.trocaOleo)); y += rh;
-  cell(M, y, 190, rh, 'Data da inspeção:', brData(r.data)); y += rh;
+  cell(M, y, 95, rh, 'Modelo:', r.modelo); cell(M + 95, y, 95, rh, 'Condutor atual:', r.condutor); y += rh;
+  cell(M, y, 95, rh, 'Região:', r.regiao); cell(M + 95, y, 95, rh, 'Data da inspeção:', brData(r.data)); y += rh;
   doc.rect(M, y, 190, rh);
   TIPOS.forEach(([k, n], i) => { const x = M + 2 + i * 62; doc.rect(x, y + 2, 3, 3); if (r.tipo === k) txt('X', x + .5, y + 4.7, { b: 1, s: 8 }); txt(n, x + 5, y + 4.7, { b: 1 }); });
   y += rh + 2;
@@ -488,7 +514,7 @@ function gerarPdf(r) {
   const sw = 95;
   doc.rect(M, y, sw, 24);
   if (r.assin.condutor) doc.addImage(r.assin.condutor, 'PNG', M + 1, y + 1, sw - 2, 22);
-  txt('Assinatura Condutor Atual', M, y + 28, { b: 1, s: 8 });
+  txt('Assinatura Condutor Atual' + (r.condutor ? ': ' + r.condutor : ''), M, y + 28, { b: 1, s: 8 });
   txt(REVISAO, M + W, 292, { s: 7, a: 'right' });
 
   // --- Fotos
@@ -506,10 +532,30 @@ function gerarPdf(r) {
   return doc;
 }
 
-/* ---------- Cadastro de veículos (veiculos.json, gerado de VEÍCULOS.xlsx) ---------- */
+/* ---------- Cadastro de veículos (veiculos.json, gerado de "Veículos inventário.xlsx") ---------- */
 // Lista embutida (garante o funcionamento mesmo sem o arquivo); veiculos.json, se existir, a substitui.
-let VEICULOS = { '18': 'MNO8P156', '27': 'IJK9L101', '38': 'ABC1D234', '54': 'EFG5H678' };
-fetch('veiculos.json').then(r => r.json()).then(j => { if (j && Object.keys(j).length) VEICULOS = j; }).catch(() => {});
+const V = (modelo, placa, motorista, radio, regiao) => ({ modelo, placa, motorista, radio, regiao, area: 'Inventário Florestal' });
+let VEICULOS = {
+  '3': V('HILUX', 'JCK 9A28', 'Paulo Sérgio', 'Sim', 'Guaíba'),
+  '9': V('HILUX', 'TRJ 4E49', 'Diulliane', 'Não', 'Vila Nova do Sul'),
+  '16': V('RANGER', 'JAI 9J85', 'Micael', 'Sim', 'Guaíba'),
+  '20': V('HILUX', 'JCV 3F17', 'Alexandre', 'Não', 'Pinheiro Machado'),
+  '26': V('HILUX', 'JCP 7E26', 'Marcos Rodrigues', 'Não', 'Pinheiro Machado'),
+  '30': V('RANGER', 'JBB 5I18', 'Marcos Bertó', 'Sim', 'Guaíba'),
+  '32': V('RANGER', 'JCK 9A23', 'Fagner', 'Não', 'Guaíba'),
+  '35': V('RANGER', 'JBG 5A79', 'Carlos Eduardo', 'Não', 'Guaíba'),
+  '43': V('HILUX', 'TER 6J57', 'Gabriel', 'Não', 'Vila Nova do Sul'),
+  '44': V('HILUX', 'TRJ 4E46', 'Reserva', 'Não', 'Guaíba'),
+  '45': V('HILUX', 'JDE 5D 75', 'Robson', 'Sim', 'Guaíba'),
+  '48': V('HILUX', 'TQR 2D48', 'Gilnei', 'Sim', 'Guaíba'),
+  '49': V('HILUX', 'JBY 1E19', 'Lucas', 'Sim', 'Encruzilhada do Sul')
+};
+// aceita também o formato antigo { "18": "PLACA" }
+fetch('veiculos.json').then(r => r.json()).then(j => {
+  if (!j || !Object.keys(j).length) return;
+  VEICULOS = {};
+  for (const k in j) VEICULOS[k] = typeof j[k] === 'string' ? V('', j[k], '', '', '') : j[k];
+}).catch(() => {});
 
 /* ---------- Início ---------- */
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

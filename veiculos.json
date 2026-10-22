@@ -1,6 +1,15 @@
 {
- "18": "MNO8P156",
- "27": "IJK9L101",
- "38": "ABC1D234",
- "54": "EFG5H678"
+  "3":  { "modelo": "HILUX",  "placa": "JCK 9A28",  "motorista": "Paulo Sérgio",     "radio": "Sim", "regiao": "Guaíba",              "area": "Inventário Florestal" },
+  "9":  { "modelo": "HILUX",  "placa": "TRJ 4E49",  "motorista": "Diulliane",        "radio": "Não", "regiao": "Vila Nova do Sul",    "area": "Inventário Florestal" },
+  "16": { "modelo": "RANGER", "placa": "JAI 9J85",  "motorista": "Micael",           "radio": "Sim", "regiao": "Guaíba",              "area": "Inventário Florestal" },
+  "20": { "modelo": "HILUX",  "placa": "JCV 3F17",  "motorista": "Alexandre",        "radio": "Não", "regiao": "Pinheiro Machado",    "area": "Inventário Florestal" },
+  "26": { "modelo": "HILUX",  "placa": "JCP 7E26",  "motorista": "Marcos Rodrigues", "radio": "Não", "regiao": "Pinheiro Machado",    "area": "Inventário Florestal" },
+  "30": { "modelo": "RANGER", "placa": "JBB 5I18",  "motorista": "Marcos Bertó",     "radio": "Sim", "regiao": "Guaíba",              "area": "Inventário Florestal" },
+  "32": { "modelo": "RANGER", "placa": "JCK 9A23",  "motorista": "Fagner",           "radio": "Não", "regiao": "Guaíba",              "area": "Inventário Florestal" },
+  "35": { "modelo": "RANGER", "placa": "JBG 5A79",  "motorista": "Carlos Eduardo",   "radio": "Não", "regiao": "Guaíba",              "area": "Inventário Florestal" },
+  "43": { "modelo": "HILUX",  "placa": "TER 6J57",  "motorista": "Gabriel",          "radio": "Não", "regiao": "Vila Nova do Sul",    "area": "Inventário Florestal" },
+  "44": { "modelo": "HILUX",  "placa": "TRJ 4E46",  "motorista": "Reserva",          "radio": "Não", "regiao": "Guaíba",              "area": "Inventário Florestal" },
+  "45": { "modelo": "HILUX",  "placa": "JDE 5D 75", "motorista": "Robson",           "radio": "Sim", "regiao": "Guaíba",              "area": "Inventário Florestal" },
+  "48": { "modelo": "HILUX",  "placa": "TQR 2D48",  "motorista": "Gilnei",           "radio": "Sim", "regiao": "Guaíba",              "area": "Inventário Florestal" },
+  "49": { "modelo": "HILUX",  "placa": "JBY 1E19",  "motorista": "Lucas",            "radio": "Sim", "regiao": "Encruzilhada do Sul", "area": "Inventário Florestal" }
 }
