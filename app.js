@@ -133,7 +133,8 @@ async function showList() {
   if (!all.length) {
     app.append(h('div', { class: 'empty' }, icon('carro', 96), h('br'), 'Nenhuma inspeção ainda.', h('br'), 'Toque em "Nova inspeção" para começar.'));
   } else {
-    app.append(h('div', { class: 'hero' }, h('b', null, 'Inspeções'), h('span', null, `${all.length} registro(s) neste aparelho`)));
+    app.append(h('div', { class: 'hero' }, h('b', null, 'Inspeções'), h('span', null, `${all.length} registro(s) neste aparelho`)),
+      h('button', { class: 'btn sec', style: 'margin:0 0 14px', onclick: showRelatorio }, icon('pdf'), 'Relatório do mês'));
   }
   for (const r of all) {
     const nc = ncCount(r), tipo = TIPOS.find(t => t[0] === r.tipo)[1];
@@ -436,10 +437,12 @@ async function finalizar(compartilhar) {
   await entregarPdf(cur, compartilhar);
 }
 
-async function entregarPdf(r, compartilhar) {
+const entregarPdf = (r, compartilhar) =>
+  entregar(() => gerarPdf(r), `Checklist_${(r.placa || 'veiculo').replace(/[^A-Za-z0-9]/g, '')}_${r.data}.pdf`, compartilhar);
+
+async function entregar(gerar, nome, compartilhar) {
   try {
-    const doc = gerarPdf(r), blob = doc.output('blob');
-    const nome = `Checklist_${(r.placa || 'veiculo').replace(/[^A-Za-z0-9]/g, '')}_${r.data}.pdf`;
+    const blob = gerar().output('blob');
     const file = new File([blob], nome, { type: 'application/pdf' });
     if (compartilhar && navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], title: nome }); return; } catch (e) { if (e.name === 'AbortError') return; }
@@ -529,6 +532,134 @@ function gerarPdf(r) {
       doc.text(doc.splitTextToSize(f.legenda || `Foto ${i + 1}`, cw).slice(0, 2), x, yy + ph + 4);
     });
   }
+  return doc;
+}
+
+/* ---------- Relatório mensal (todas as inspeções do mês de um veículo) ---------- */
+async function showRelatorio() {
+  cur = null; setTitle('Relatório do mês', true, 'Resumo único das inspeções do mês');
+  const all = await dbAll();
+  const app = $('#app'); app.replaceChildren(); window.scrollTo(0, 0);
+  const ultimoDe = n => all.filter(r => r.veiculo === n).sort((a, b) => b.atualizado - a.atualizado)[0];
+  const veics = [...new Set(all.map(r => r.veiculo).filter(Boolean))].sort((a, b) => a - b);
+  const sel = h('select', null, veics.map(n => h('option', { value: n }, `${n} · ${ultimoDe(n).placa || ''} · ${ultimoDe(n).modelo || ''}`)));
+  const iMes = h('input', { type: 'month', value: hoje().slice(0, 7) });
+  const info = h('div', { class: 'warn' });
+  const doMes = () => all.filter(r => r.veiculo === sel.value && (r.data || '').startsWith(iMes.value))
+    .sort((a, b) => a.data < b.data ? -1 : a.data > b.data ? 1 : a.atualizado - b.atualizado);
+  const atualiza = () => {
+    const regs = doMes(), dias = new Set(regs.map(r => r.data)).size;
+    info.textContent = regs.length ? `${regs.length} inspeção(ões) em ${dias} dia(s) neste mês` : 'Nenhuma inspeção deste veículo neste mês.';
+  };
+  sel.onchange = atualiza; iMes.oninput = atualiza; atualiza();
+  const gerar = compartilhar => {
+    const regs = doMes();
+    if (!regs.length) { toast('Nenhuma inspeção neste mês'); return; }
+    entregar(() => gerarRelatorio(sel.value, iMes.value, regs),
+      `Relatorio_${(regs[regs.length - 1].placa || sel.value).replace(/[^A-Za-z0-9]/g, '')}_${iMes.value}.pdf`, compartilhar);
+  };
+  if (!veics.length) { app.append(h('div', { class: 'empty' }, 'Nenhuma inspeção salva neste aparelho.')); return; }
+  app.append(h('div', { class: 'page' },
+    h('section', { class: 'card' }, h('h2', null, 'Período'),
+      h('label', null, 'Veículo'), sel, h('label', null, 'Mês / ano'), iMes, info),
+    h('button', { class: 'btn', onclick: () => gerar(false) }, icon('pdf'), 'Gerar relatório em PDF'),
+    h('button', { class: 'btn sec', onclick: () => gerar(true) }, icon('share'), 'Gerar e compartilhar')));
+}
+
+function gerarRelatorio(veic, mes, regs) {
+  const doc = new jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const M = 8, W = 281, PH = 210;
+  const txt = (t, x, y, o = {}) => { doc.setFont('helvetica', o.b ? 'bold' : 'normal'); doc.setFontSize(o.s || 9); doc.text(String(t ?? ''), x, y, o.a ? { align: o.a } : undefined); };
+  const [ano, m] = mes.split('-').map(Number), nd = new Date(ano, m, 0).getDate();
+  const porDia = {}; regs.forEach(r => (porDia[+r.data.slice(8, 10)] ||= []).push(r));
+  // vários registros no mesmo dia: NC prevalece sobre C, que prevalece sobre N/A
+  const valor = (d, n) => { const v = (porDia[d] || []).map(r => r.itens[n]); return v.includes('NC') ? 'NC' : v.includes('C') ? 'C' : v.includes('NA') ? 'NA' : ''; };
+  const ult = regs[regs.length - 1];
+  const condutores = [...new Set(regs.map(r => r.condutor).filter(Boolean))].join(', ');
+  const kms = regs.map(r => +r.km).filter(k => k > 0);
+  const diasInsp = Object.keys(porDia).length;
+  let totalNc = 0;
+  for (let d = 1; d <= nd; d++) ITENS.forEach((_, i) => { if (valor(d, i + 1) === 'NC') totalNc++; });
+
+  // --- Página 1: grade itens x dias (igual à folha de papel)
+  doc.setFillColor(22, 120, 60); doc.rect(M, M, W, 9, 'F');
+  doc.setTextColor(255); txt('RELATÓRIO MENSAL - INSPEÇÃO CHECK-LIST DE VEÍCULOS', M + W / 2, M + 6.2, { b: 1, s: 12, a: 'center' }); doc.setTextColor(0);
+  let y = M + 10; const ch = 6, cw = W / 4;
+  const cell = (x, label, val) => {
+    doc.setDrawColor(120); doc.setLineWidth(.2); doc.rect(x, y, cw, ch);
+    txt(label, x + 1.5, y + 4.1, { b: 1, s: 8 }); const lw = doc.getTextWidth(label) + 2.5;
+    txt(doc.splitTextToSize(String(val || ''), cw - lw - 2)[0] || '', x + lw, y + 4.1, { s: 8 });
+  };
+  cell(M, 'Nº Veículo:', veic); cell(M + cw, 'Placa:', ult.placa); cell(M + 2 * cw, 'Modelo:', ult.modelo); cell(M + 3 * cw, 'Mês/ano:', brMes(mes)); y += ch;
+  cell(M, 'Região:', ult.regiao); cell(M + cw, 'Condutor(es):', condutores); cell(M + 2 * cw, 'Dias inspecionados:', `${diasInsp} de ${nd}`); cell(M + 3 * cw, 'Total de NC:', String(totalNc)); y += ch + 2;
+
+  const c1 = 7, c2 = 56, dw = (W - c1 - c2) / 31, rh = 4.1, x0 = M + c1 + c2;
+  doc.setFillColor(225, 232, 227); doc.rect(M, y, W, rh, 'F');
+  txt('Nº', M + 1, y + 3, { b: 1, s: 6.5 }); txt('Ítem / Dias', M + c1 + 1, y + 3, { b: 1, s: 6.5 });
+  for (let d = 1; d <= 31; d++) txt(d, x0 + (d - .5) * dw, y + 3, { b: 1, s: 6.5, a: 'center' });
+  const grade = () => { doc.setDrawColor(150); doc.rect(M, y, c1, rh); doc.rect(M + c1, y, c2, rh); for (let d = 0; d < 31; d++) doc.rect(x0 + d * dw, y, dw, rh); };
+  grade(); y += rh;
+  ITENS.forEach((nome, i) => {
+    for (let d = nd + 1; d <= 31; d++) { doc.setFillColor(215); doc.rect(x0 + (d - 1) * dw, y, dw, rh, 'F'); }
+    txt(pad2(i + 1), M + 1, y + 3, { s: 6.5 }); txt(nome, M + c1 + 1, y + 3, { s: 6.5 });
+    for (let d = 1; d <= nd; d++) {
+      const v = valor(d, i + 1); if (!v) continue;
+      const cx = x0 + (d - 1) * dw;
+      if (v === 'NC') { doc.setFillColor(253, 214, 214); doc.rect(cx, y, dw, rh, 'F'); doc.setTextColor(198, 40, 40); }
+      else if (v === 'NA') doc.setTextColor(120);
+      txt(v === 'NA' ? 'N/A' : v, cx + dw / 2, y + 3, { b: 1, s: v === 'C' ? 6.5 : 5.5, a: 'center' }); doc.setTextColor(0);
+    }
+    grade(); y += rh;
+  });
+  txt('Km', M + 1, y + 3, { b: 1, s: 6.5 });
+  for (let d = 1; d <= 31; d++) {
+    if (d > nd) { doc.setFillColor(215); doc.rect(x0 + (d - 1) * dw, y, dw, rh, 'F'); continue; }
+    const k = Math.max(0, ...(porDia[d] || []).map(r => +r.km || 0));
+    if (k) txt(k, x0 + (d - .5) * dw, y + 2.9, { s: k > 99999 ? 3.6 : 4.3, a: 'center' });
+  }
+  grade(); y += rh + 3.5;
+  txt('Legenda: C - Conforme / NC - Não conforme / N/A - Não se aplica · Dia em branco = sem inspeção · Cinza = dia inexistente no mês', M, y, { s: 7 });
+  txt(REVISAO, M + W, PH - 4, { s: 7, a: 'right' });
+
+  // --- Página 2: resumo
+  doc.addPage(); y = M + 4;
+  const novaLinha = (alt = 5) => { y += alt; if (y > PH - 14) { doc.addPage(); y = M + 4; } };
+  const titulo = t => { novaLinha(3); txt(t, M, y, { b: 1, s: 11 }); doc.setDrawColor(22, 120, 60); doc.setLineWidth(.5); doc.line(M, y + 1.5, M + W, y + 1.5); doc.setLineWidth(.2); novaLinha(6); };
+  const paragrafo = (t, s = 9) => doc.splitTextToSize(t, W - 4).forEach(l => { txt(l, M + 2, y, { s }); novaLinha(s * .45); });
+  titulo(`Resumo do mês ${brMes(mes)} - Veículo ${veic} · ${ult.placa || ''}`);
+  // no mês corrente, só conta como "sem inspeção" os dias que já passaram
+  const ate = mes === hoje().slice(0, 7) ? +hoje().slice(8, 10) : nd;
+  const semInsp = []; for (let d = 1; d <= ate; d++) if (!porDia[d]) semInsp.push(d);
+  paragrafo(`Inspeções registradas: ${regs.length}   ·   Dias inspecionados: ${diasInsp} de ${nd}   ·   Itens não conformes: ${totalNc}`);
+  paragrafo(`Dias sem inspeção: ${semInsp.length ? semInsp.join(', ') : 'nenhum'}`);
+  if (kms.length) paragrafo(`Km inicial: ${Math.min(...kms)}   ·   Km final: ${Math.max(...kms)}   ·   Km rodados no mês: ${Math.max(...kms) - Math.min(...kms)}`);
+  const revs = regs.map(r => r.proximaRevisao).filter(Boolean); if (revs.length) paragrafo(`Próxima revisão conf. KM: ${revs[revs.length - 1]}`);
+  const oleo = regs.map(r => r.trocaOleo).filter(Boolean); if (oleo.length) paragrafo(`Data troca do óleo: ${brData(oleo[oleo.length - 1])}`);
+
+  titulo('Itens não conformes');
+  const ncs = []; regs.forEach(r => ITENS.forEach((nome, i) => { if (r.itens[i + 1] === 'NC') ncs.push([brData(r.data), `${pad2(i + 1)} - ${nome}`, r.condutor || '']); }));
+  if (!ncs.length) paragrafo('Nenhum item não conforme no mês.');
+  else {
+    txt('Data', M + 2, y, { b: 1 }); txt('Item', M + 30, y, { b: 1 }); txt('Condutor', M + 120, y, { b: 1 }); novaLinha();
+    ncs.forEach(([d, it, c]) => { doc.setTextColor(198, 40, 40); txt(d, M + 2, y); txt(it, M + 30, y); doc.setTextColor(0); txt(c, M + 120, y); novaLinha(4.5); });
+  }
+
+  titulo('Observações e avarias');
+  const obs = regs.filter(r => (r.obs || '').trim() || r.marks.length || r.fotos.length);
+  if (!obs.length) paragrafo('Nenhuma observação ou avaria registrada no mês.');
+  obs.forEach(r => {
+    const av = AVARIAS.map(([k, n]) => [n, r.marks.filter(mk => mk.t === k).length]).filter(a => a[1]).map(([n, q]) => `${q} ${n.toLowerCase()}`).join(', ');
+    const extra = [av && 'Avarias: ' + av, r.fotos.length && `${r.fotos.length} foto(s)`].filter(Boolean).join(' · ');
+    paragrafo(`${brData(r.data)}: ${(r.obs || '').trim() || '(sem texto)'}${extra ? '  [' + extra + ']' : ''}`);
+  });
+
+  if (y > PH - 40) { doc.addPage(); y = M + 4; }
+  y = Math.max(y + 12, PH - 32);
+  ['Assinatura Condutor', 'Assinatura Supervisor/Gerente', 'Assinatura Auditor'].forEach((t, i) => {
+    const x = M + i * (W / 3); doc.setDrawColor(0); doc.line(x + 4, y, x + W / 3 - 8, y); txt(t, x + 4, y + 4, { b: 1, s: 8 });
+  });
+  txt(`Gerado em ${brData(hoje())} pelo app Checklist de Veículos`, M, PH - 4, { s: 7 });
+  txt(REVISAO, M + W, PH - 4, { s: 7, a: 'right' });
   return doc;
 }
 
