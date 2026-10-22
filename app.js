@@ -544,6 +544,7 @@ let VEICULOS = {
   '30': V('RANGER', 'JBB 5I18', 'Marcos Bertó', 'Sim', 'Guaíba'),
   '32': V('RANGER', 'JCK 9A23', 'Fagner', 'Não', 'Guaíba'),
   '35': V('RANGER', 'JBG 5A79', 'Carlos Eduardo', 'Não', 'Guaíba'),
+  '38': V('MONTANA', 'JCN 4J83', 'Carmen', 'Não', 'Guaíba'),
   '43': V('HILUX', 'TER 6J57', 'Gabriel', 'Não', 'Vila Nova do Sul'),
   '44': V('HILUX', 'TRJ 4E46', 'Reserva', 'Não', 'Guaíba'),
   '45': V('HILUX', 'JDE 5D 75', 'Robson', 'Sim', 'Guaíba'),

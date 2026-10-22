@@ -1,4 +1,4 @@
-const CACHE = 'checklist-v21';
+const CACHE = 'checklist-v22';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'lib/jspdf.umd.min.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/croqui.jpg', 'croqui-data.js', 'veiculos.json'];
 
 // Um arquivo ausente não impede a instalação/atualização do app
