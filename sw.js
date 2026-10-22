@@ -1,5 +1,5 @@
-const CACHE = 'checklist-v23';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'lib/jspdf.umd.min.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/croqui.jpg', 'croqui-data.js', 'veiculos.json'];
+const CACHE = 'checklist-v1.0';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'lib/jspdf.umd.min.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/croqui.jpg', 'icons/logo-rs.jpg', 'croqui-data.js', 'logo-data.js', 'veiculos.json', 'condutores.json'];
 
 // Um arquivo ausente não impede a instalação/atualização do app
 self.addEventListener('install', e => {

@@ -9,6 +9,9 @@ function mostrarErro(msg) {
 window.addEventListener('error', e => mostrarErro(e.message + (e.lineno ? ' (linha ' + e.lineno + ')' : '')));
 window.addEventListener('unhandledrejection', e => mostrarErro(String(e.reason && e.reason.message || e.reason)));
 
+/* Versão do app: atualizar a cada nova publicação */
+const VERSAO = '1.0', VERSAO_DATA = '22/10/2026';
+
 /* ---------- Dados do checklist (conforme "check list diaria veiculos.pdf", rev. 08/11/2024) ---------- */
 const ITENS = [
   'Documentos do Veículo', 'Limpeza do veículo', 'Estado dos vidros', 'Espelhos retrovisores', 'Freio de mão',
@@ -18,17 +21,30 @@ const ITENS = [
   'Luz de ré', 'Palheta limpador para brisa', 'Água limpador para brisa', 'Nível do líquido do radiador', 'Nível do óleo',
   'Nível líquido de freio', 'Triângulo/Macaco/Chave Roda', 'Troca de pneu (furado/murcho)', 'Troca de condutor',
   'Estado dos Pneus dianteiros', 'Estado dos Pneus traseiros', 'Estado do estepe', 'Kit de Ferramenta',
-  'Capô está bem fechado', 'Motor de arranque', 'Conserto do pneu'
+  'Capô está bem fechado', 'Motor de arranque', 'Conserto do pneu', 'Solda do engate de reboque'
 ];
+// Itens indispensáveis (conforme "Veículos_Indispoensável.xlsx"): se NC, o veículo não pode sair
+const INDISPENSAVEIS = [1, 5, 7, 8, 9, 10, 13, 14, 15, 16, 17, 19, 20, 23, 24, 25, 26, 34, 35, 36];
+const PENDENCIAS = 'NÃO SAIR ATÉ SOLUCIONAR AS SEGUINTES PENDÊNCIAS:';
+const pendencias = r => INDISPENSAVEIS.filter(n => r.itens[n] === 'NC');
+// Alerta de revisão: avisa quando faltarem ALERTA_REVISAO_KM km ou menos (ou se já passou)
+const ALERTA_REVISAO_KM = 10;
+function alertaRevisao(r) {
+  const km = +r.km, rev = +r.proximaRevisao;
+  if (!km || !rev || rev - km > ALERTA_REVISAO_KM) return '';
+  return rev - km <= 0
+    ? `REVISÃO VENCIDA! Km atual ${km} já atingiu a revisão de ${rev} km${km > rev ? ` (passou ${km - rev} km)` : ''}.`
+    : `ATENÇÃO: faltam ${rev - km} km para a revisão (${rev} km).`;
+}
 const TIPOS = [['diaria', 'Inspeção Diária'], ['auditoria', 'Auditoria Interna'], ['troca', 'Inspeção p/ troca de condutor']];
 const AVARIAS = [['A', 'Amassado'], ['R', 'Riscado'], ['X', 'Quebrado'], ['PF', 'Pneu furado']];
 const OBS_FIXAS = [
   'Verificar o nível de combustível. O TANQUE DEVE ESTAR CHEIO.',
   'Verificar o nível do óleo. DEVE ESTAR NO NÍVEL.',
-  'Verificar o nível do líquido do radiador. DEVE ESTAR NO NÍVEL.'
+  'Verificar o nível do líquido do radiador. DEVE ESTAR NO NÍVEL.',
+  'Verificar o aperto de rodas semanalmente. SEGUNDA-FEIRA.'
 ];
 const AVISO = 'SE ALGUM DOS ÍTENS ESTIVER EM CONDIÇÕES RUINS, O MOTORISTA DEVERÁ INFORMAR IMEDIATAMENTE A GERÊNCIA, PARA TROCA OU REPARO DOS ÍTENS NECESSÁRIOS.';
-const REVISAO = 'Última Revisão 08/11/2024';
 const CW = 1000, CH = 636; // tamanho lógico do croqui
 
 /* ---------- IndexedDB ---------- */
@@ -71,6 +87,9 @@ const pad2 = n => String(n).padStart(2, '0');
 function hoje() { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
 function brData(iso) { return iso ? iso.split('-').reverse().join('/') : ''; }
 function brMes(m) { return m ? m.split('-').reverse().join('/') : ''; }
+const MESES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+const SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+function diaSemana(iso) { const [a, m, d] = iso.split('-').map(Number); return SEMANA[new Date(a, m - 1, d).getDay()]; }
 function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.hidden = false;
   clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2600);
@@ -82,7 +101,7 @@ function novo() {
     status: 'rascunho', tipo: 'diaria', data: d, mesAno: d.slice(0, 7),
     veiculo: '', placa: '', modelo: '', condutor: '', regiao: '', radio: '',
     km: '', condutorAnterior: '', trocaOleo: '', proximaRevisao: '',
-    itens: {}, marks: [], obs: '', fotos: [], assin: { condutor: '' },
+    itens: {}, marks: [], obs: '', fotos: [], assin: { condutor: '', auditor: '' },
     criado: Date.now(), atualizado: Date.now()
   };
 }
@@ -127,7 +146,8 @@ const vibra = () => { try { navigator.vibrate && navigator.vibrate(12); } catch 
 /* ---------- Lista / histórico ---------- */
 async function showList() {
   cur = null; setTitle('Checklist de Veículos', false, 'Inspeção de veículos');
-  const all = (await dbAll()).sort((a, b) => b.atualizado - a.atualizado);
+  // mais recentes primeiro, pela data da inspeção
+  const all = (await dbAll()).sort((a, b) => (b.data || '').localeCompare(a.data || '') || b.atualizado - a.atualizado);
   const app = $('#app'); app.replaceChildren();
   window.scrollTo(0, 0);
   if (!all.length) {
@@ -137,20 +157,23 @@ async function showList() {
       h('button', { class: 'btn sec', style: 'margin:0 0 14px', onclick: showRelatorio }, icon('pdf'), 'Relatório do mês'));
   }
   for (const r of all) {
-    const nc = ncCount(r), tipo = TIPOS.find(t => t[0] === r.tipo)[1];
+    const nc = ncCount(r), tipo = (TIPOS.find(t => t[0] === r.tipo) || [])[1] || '';
     app.append(h('div', { class: 'hcard' + (nc ? ' bad' : '') },
-      h('div', { class: 'av' }, r.veiculo || '—'),
+      h('div', { class: 'av dt', onclick: () => abrir(r) },
+        h('b', null, r.data ? r.data.slice(8, 10) : '—'), h('span', null, r.data ? MESES[+r.data.slice(5, 7) - 1] : '')),
       h('div', { class: 'i', onclick: () => abrir(r) },
-        h('b', null, r.placa || 'Sem placa'),
-        h('small', null, [r.modelo, r.condutor].filter(Boolean).join(' · ') || '—'), h('br'),
-        h('small', null, `${brData(r.data)} · ${tipo}`),
+        h('div', { class: 'quando' }, [r.veiculo && 'Veículo ' + r.veiculo, r.placa, r.modelo].filter(Boolean).join(' · ') || 'Sem veículo'),
+        h('small', null, r.data ? `${diaSemana(r.data)}, ${brData(r.data)}` : '—'), h('br'),
+        h('small', null, [r.condutor, tipo].filter(Boolean).join(' · ')),
         h('div', { class: 'chips' },
           h('span', { class: 'tag ' + (r.status === 'final' ? 'ok' : 'dr') }, r.status === 'final' ? 'Concluída' : 'Rascunho'),
           nc ? h('span', { class: 'tag bad' }, `${nc} NC`) : null,
+          alertaRevisao(r) ? h('span', { class: 'tag bad' }, 'Revisão') : null,
           r.fotos.length ? h('span', { class: 'tag' }, `${r.fotos.length} foto(s)`) : null)),
       h('button', { class: 'ib', 'aria-label': 'Gerar PDF', onclick: () => entregarPdf(r, false) }, icon('pdf')),
       h('button', { class: 'ib danger', 'aria-label': 'Excluir', onclick: async () => { if (confirm('Excluir esta inspeção?')) { await dbDel(r.id); showList(); } } }, icon('lixo'))));
   }
+  app.append(h('div', { class: 'versao' }, `Checklist de Veículos · Versão ${VERSAO} (${VERSAO_DATA})`));
   app.append(h('button', { class: 'fab', onclick: () => abrir(novo()) }, icon('mais'), 'Nova inspeção'));
 }
 
@@ -180,24 +203,49 @@ function showForm() {
   const fVeic = field('Nº Veículo (prefixo)', 'veiculo', 'text', { inputmode: 'numeric', list: 'listaVeiculos', autocomplete: 'off' });
   const fPlaca = field('Placa', 'placa', 'text', { autocapitalize: 'characters', maxlength: 10 });
   const fModelo = field('Modelo', 'modelo', 'text', { autocapitalize: 'characters' });
-  const fCond = field('Condutor atual', 'condutor');
+  const OUTRO = '__outro';
+  // nome fora da lista (ex.: inspeção antiga) abre já em "Outro" com o nome na caixa
+  const ehOutro = !!cur.condutor && !CONDUTORES.includes(cur.condutor);
+  const sCond = h('select', null, h('option', { value: '' }, 'Selecione o condutor...'),
+    CONDUTORES.map(n => h('option', { value: n, selected: n === cur.condutor }, n)), h('option', { value: OUTRO, selected: ehOutro }, 'Outro'));
+  const iOutro = h('input', { type: 'text', placeholder: 'Digite o nome', value: ehOutro ? cur.condutor : '', hidden: !ehOutro });
+  sCond.onchange = () => {
+    const outro = sCond.value === OUTRO; iOutro.hidden = !outro;
+    cur.condutor = outro ? iOutro.value : sCond.value; if (outro) iOutro.focus(); autosave();
+  };
+  iOutro.oninput = () => { cur.condutor = iOutro.value; autosave(); };
+  const fCond = h('div', null, h('label', null, 'Condutor atual'), h('div', { class: 'row' }, sCond, iOutro));
   const fRegiao = field('Região', 'regiao');
   const iVeic = fVeic.querySelector('input'), iPlaca = fPlaca.querySelector('input');
   const aviso = h('small', { style: 'color:var(--mut)' });
+  // Próxima revisão: campo na etapa Itens; o alerta aparece também junto ao Km
+  const iRev = h('input', { type: 'number', inputmode: 'numeric', value: cur.proximaRevisao });
+  const alertas = [h('div', { class: 'crit' }), h('div', { class: 'crit' })];
+  const atualizaAlerta = () => { const t = alertaRevisao(cur); alertas.forEach(a => { a.textContent = t; a.hidden = !t; }); };
+  iRev.oninput = () => { cur.proximaRevisao = iRev.value; atualizaAlerta(); autosave(); };
+  const fKm = field('Km', 'km', 'number', { inputmode: 'numeric' });
+  fKm.querySelector('input').addEventListener('input', atualizaAlerta);
   const sel = h('select', null, h('option', { value: '' }, 'Selecione o veículo...'),
     Object.keys(VEICULOS).sort((a, b) => a - b).map(n => {
       const v = VEICULOS[n];
-      return h('option', { value: n, selected: n === cur.veiculo }, `${n} · ${v.modelo} · ${v.placa} · ${v.motorista}`);
+      return h('option', { value: n, selected: n === cur.veiculo }, `${n} · ${v.modelo} · ${v.placa}`);
     }));
   sel.onchange = () => { if (sel.value) { iVeic.value = cur.veiculo = sel.value; buscarPlaca(); } };
   const preenche = (f, k, v) => { cur[k] = v || ''; f.querySelector('input').value = cur[k]; };
   let ultimo = cur.veiculo; // só preenche de novo quando o nº muda (não apaga edições manuais)
   const buscarPlaca = () => {
     const t = iVeic.value.trim(), n = VEICULOS[t] ? t : t.replace(/^0+/, ''), v = VEICULOS[n];
+    if (v && t !== n) iVeic.value = cur.veiculo = n; // "03" vira "3", igual ao cadastro
     if (v && n !== ultimo) {
       preenche(fPlaca, 'placa', v.placa); preenche(fModelo, 'modelo', v.modelo);
-      preenche(fCond, 'condutor', v.motorista); preenche(fRegiao, 'regiao', v.regiao); cur.radio = v.radio || '';
+      preenche(fRegiao, 'regiao', v.regiao); cur.radio = v.radio || '';
       autosave();
+      // traz a próxima revisão da última inspeção deste veículo
+      if (!cur.proximaRevisao) dbAll().then(all => {
+        const ant = all.filter(r => r.id !== cur.id && r.veiculo === n && r.proximaRevisao)
+          .sort((a, b) => (b.data || '').localeCompare(a.data || '') || b.atualizado - a.atualizado)[0];
+        if (ant && !cur.proximaRevisao) { iRev.value = cur.proximaRevisao = ant.proximaRevisao; atualizaAlerta(); autosave(); }
+      }).catch(() => {});
     }
     ultimo = n; sel.value = v ? n : '';
     aviso.textContent = v ? `Dados do cadastro · Rádio PX Motorola: ${v.radio || '—'}`
@@ -205,8 +253,17 @@ function showForm() {
     cab();
   };
   ['input', 'change', 'blur'].forEach(ev => iVeic.addEventListener(ev, buscarPlaca));
-  iPlaca.addEventListener('input', cab);
+  iPlaca.addEventListener('input', () => {
+    const up = iPlaca.value.toUpperCase();
+    if (up !== iPlaca.value) { iPlaca.value = cur.placa = up; autosave(); }
+    cab();
+  });
   buscarPlaca();
+  // "Data mês/ano" acompanha a data da inspeção
+  const fData = field('Data da inspeção', 'data', 'date'), fMes = field('Data mês/ano', 'mesAno', 'month');
+  fData.querySelector('input').addEventListener('input', () => {
+    if (cur.data) { cur.mesAno = cur.data.slice(0, 7); fMes.querySelector('input').value = cur.mesAno; }
+  });
   const pDados = h('div', { class: 'page' },
     h('section', { class: 'card' }, h('h2', null, 'Tipo de inspeção'), h('div', { class: 'seg' }, tipoBtns)),
     h('section', { class: 'card' }, h('h2', null, 'Veículo'),
@@ -215,9 +272,9 @@ function showForm() {
       h('div', { class: 'row' }, fVeic, fPlaca), aviso,
       h('div', { class: 'row' }, fModelo, fRegiao),
       fCond,
-      h('div', { class: 'row' }, field('Km', 'km', 'number', { inputmode: 'numeric' }), field('Data da inspeção', 'data', 'date')),
+      h('div', { class: 'row' }, fKm, fData), alertas[0],
       field('Condutor anterior', 'condutorAnterior'),
-      h('div', { class: 'row' }, field('Data mês/ano', 'mesAno', 'month'), field('Data troca do óleo', 'trocaOleo', 'date'))),
+      h('div', { class: 'row' }, fMes, field('Data troca do óleo', 'trocaOleo', 'date'))),
     continuar());
 
   /* 2 - Itens */
@@ -235,7 +292,8 @@ function showForm() {
       const v = cur.itens[n];
       row.className = 'item' + (v === 'NC' ? ' nc' : v === 'C' ? ' okk' : '');
       row.replaceChildren(
-        h('div', { class: 'top' }, h('span', { class: 'n' }, pad2(n)), h('span', { class: 't' }, nome)),
+        h('div', { class: 'top' }, h('span', { class: 'n' }, pad2(n)), h('span', { class: 't' }, nome),
+          INDISPENSAVEIS.includes(n) ? h('span', { class: 'tag bad' }, 'Indispensável') : null),
         h('div', { class: 'opt' }, ['C', 'NC', 'NA'].map(k => h('button', { type: 'button', class: k.toLowerCase() + (v === k ? ' on' : ''), onclick: () => {
           cur.itens[n] = cur.itens[n] === k ? null : k; vibra(); desenha(); atualizaSum(); autosave();
         } }, k === 'NA' ? 'N/A' : k))),
@@ -256,8 +314,6 @@ function showForm() {
     h('button', { type: 'button', class: 'chip' + (k === filtro ? ' on' : ''), onclick: e => {
       filtro = k; chips.forEach(c => c.classList.remove('on')); e.currentTarget.classList.add('on'); renderLista();
     } }, n));
-  const iRev = h('input', { type: 'number', inputmode: 'numeric', value: cur.proximaRevisao });
-  iRev.oninput = () => { cur.proximaRevisao = iRev.value; autosave(); };
   const pItens = h('div', { class: 'page' },
     h('div', { class: 'warn' }, 'Legenda: C = Conforme · NC = Não conforme · N/A = Não se aplica'),
     sum, h('div', { class: 'filters' }, chips), lista,
@@ -265,11 +321,11 @@ function showForm() {
       ITENS.forEach((_, i) => { if (!cur.itens[i + 1]) cur.itens[i + 1] = 'C'; });
       vibra(); renderLista(); atualizaSum(); autosave();
     } }, 'Marcar restantes como Conforme'),
-    h('section', { class: 'card', style: 'margin-top:14px' }, h('h2', null, 'Próxima revisão'),
-      h('label', null, 'Próxima revisão conf. KM'), iRev,
+    h('section', { class: 'card', style: 'margin-top:14px' }, h('h2', null, 'Próxima Revisão'),
+      h('label', null, 'Próxima Revisão (Km)'), iRev, alertas[1],
       ...OBS_FIXAS.map(t => h('div', { class: 'warn' }, 'Obs.: ' + t)), h('div', { class: 'crit' }, AVISO)),
     continuar());
-  renderLista(); atualizaSum();
+  renderLista(); atualizaSum(); atualizaAlerta();
 
   /* 3 - Avarias e observação */
   const ta = h('textarea', { placeholder: 'Descreva problemas, avarias, ações...' }, cur.obs);
@@ -282,6 +338,7 @@ function showForm() {
 
   /* 5 - Finalizar */
   assinatura = sigPad('Assinatura Condutor Atual', 'condutor');
+  const assinAuditor = sigPad('Assinatura Auditor', 'auditor');
   const resumo = h('div', { class: 'resumo' });
   const atualizaResumo = () => {
     const linhas = [['Veículo / Placa', `${cur.veiculo || '—'} / ${cur.placa || '—'}`], ['Modelo', cur.modelo || '—'],
@@ -292,7 +349,7 @@ function showForm() {
   };
   const pFinal = h('div', { class: 'page' },
     h('section', { class: 'card' }, h('h2', null, 'Resumo'), resumo),
-    h('section', { class: 'card' }, h('h2', null, 'Assinatura'), assinatura),
+    h('section', { class: 'card' }, h('h2', null, 'Assinaturas'), assinatura, h('div', { style: 'margin-top:14px' }, assinAuditor)),
     h('button', { class: 'btn', onclick: () => finalizar(false) }, icon('pdf'), 'Concluir e gerar PDF'),
     h('button', { class: 'btn sec', onclick: () => finalizar(true) }, icon('share'), 'Concluir e compartilhar'),
     h('button', { class: 'btn sec', onclick: async () => { await flush(); toast('Rascunho salvo'); showList(); } }, 'Salvar rascunho e sair'));
@@ -303,7 +360,7 @@ function showForm() {
     etapa = Math.max(0, Math.min(paginas.length - 1, i));
     paginas.forEach((p, k) => (p.hidden = k !== etapa));
     [...nav.children].forEach((b, k) => b.classList.toggle('on', k === etapa));
-    if (etapa === 4) { atualizaResumo(); assinatura.fit(); }
+    if (etapa === 4) { atualizaResumo(); assinatura.fit(); assinAuditor.fit(); }
     cab(); prog(); window.scrollTo(0, 0);
   }
   app.append(...paginas, nav);
@@ -415,6 +472,12 @@ function sigPad(titulo, key) {
   const fim = () => { if (!desenhando) return; desenhando = false; cur.assin[key] = c.toDataURL('image/png'); autosave(); };
   c.onpointerup = fim; c.onpointercancel = fim;
   requestAnimationFrame(() => requestAnimationFrame(ajustar));
+  // janela redimensionada / celular girado: reajusta para o traço não sair deslocado
+  const aoRedimensionar = () => {
+    if (!c.isConnected) return window.removeEventListener('resize', aoRedimensionar);
+    if (ajustado && c.getBoundingClientRect().width) ajustar();
+  };
+  window.addEventListener('resize', aoRedimensionar);
   const wrap = h('div', null, h('label', null, titulo), c,
     h('button', { class: 'btn small sec', type: 'button', style: 'margin-top:10px', onclick: () => {
       const r = c.getBoundingClientRect(); ctx.clearRect(0, 0, r.width, r.height); cur.assin[key] = ''; autosave();
@@ -430,11 +493,29 @@ async function finalizar(compartilhar) {
   if (!cur.placa.trim()) falta.push('Placa');
   if (!(cur.condutor || '').trim()) falta.push('Condutor atual');
   if (!cur.km) falta.push('Km');
+  if (!cur.data) falta.push('Data da inspeção');
   if (falta.length) { toast('Preencha: ' + falta.join(', ')); return; }
   const sem = ITENS.filter((_, i) => !cur.itens[i + 1]).length;
   if (sem && !confirm(`${sem} item(ns) sem resposta. Gerar o PDF mesmo assim?`)) return;
   cur.status = 'final'; await flush();
+  const pend = pendencias(cur);
+  if (pend.length) await avisoPendencias(pend);
+  const rev = alertaRevisao(cur);
+  if (rev) await avisoModal(rev, []);
   await entregarPdf(cur, compartilhar);
+}
+
+const avisoPendencias = lista => avisoModal(PENDENCIAS, lista.map(n => `${pad2(n)} - ${ITENS[n - 1]}`));
+
+function avisoModal(titulo, linhas) {
+  return new Promise(res => {
+    const m = h('div', { class: 'modal' }, h('div', { class: 'box' },
+      h('div', { class: 'crit big' }, titulo),
+      linhas.length ? h('ul', null, linhas.map(t => h('li', null, t))) : null,
+      h('button', { class: 'btn', onclick: () => { m.remove(); res(); } }, 'Entendi')));
+    document.body.append(m);
+    try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch {}
+  });
 }
 
 const entregarPdf = (r, compartilhar) =>
@@ -454,6 +535,13 @@ async function entregar(gerar, nome, compartilhar) {
 }
 
 /* ---------- PDF ---------- */
+// logotipo RS Florestal num quadro branco, na ponta esquerda da faixa verde de altura hh
+function logoPdf(doc, x, y, hh) {
+  if (typeof LOGO_DATA !== 'string') return;
+  const lh = hh - 1.6, lw = lh * 206 / 156;
+  doc.setFillColor(255); doc.rect(x + .8, y + .8, lw + 1, lh, 'F');
+  try { doc.addImage(LOGO_DATA, 'JPEG', x + 1.3, y + .8, lw, lh); } catch (e) { console.error(e); }
+}
 function gerarPdf(r) {
   const doc = new jspdf.jsPDF({ unit: 'mm', format: 'a4' });
   const M = 10, W = 190;
@@ -466,6 +554,7 @@ function gerarPdf(r) {
 
   // --- Página 1
   doc.setFillColor(22, 120, 60); doc.rect(M, M, W, 10, 'F');
+  logoPdf(doc, M, M, 10);
   doc.setTextColor(255); txt('INSPEÇÃO CHECK-LIST DE VEÍCULOS', 105, M + 6.8, { b: 1, s: 13, a: 'center' }); doc.setTextColor(0);
   let y = M + 12; const rh = 7;
   cell(M, y, 95, rh, 'Nº Veículo:', r.veiculo); cell(M + 95, y, 95, rh, 'Condutor anterior:', r.condutorAnterior); y += rh;
@@ -492,12 +581,13 @@ function gerarPdf(r) {
     y += ih;
   });
   doc.rect(M, y, c1 + c2, ih); doc.rect(M + c1 + c2, y, c3, ih);
-  doc.setTextColor(198, 40, 40); txt('Próxima revisão conf. KM', M + 1.5, y + 3.7); doc.setTextColor(0);
+  doc.setTextColor(198, 40, 40); txt('Próxima Revisão (Km)', M + 1.5, y + 3.7); doc.setTextColor(0);
   txt(r.proximaRevisao, M + c1 + c2 + c3 / 2, y + 3.7, { a: 'center' }); y += ih + 2;
+  const rev = alertaRevisao(r);
+  if (rev) { doc.setTextColor(198, 40, 40); txt(rev, M, y + 2, { b: 1, s: 9 }); doc.setTextColor(0); y += 5; }
   txt('Legenda: C - Conforme / NC - Não conforme / N/A - Não se aplica', M, y + 2, { s: 7.5 });
   const nc = ncCount(r);
   txt(nc ? `Itens não conformes: ${nc}` : 'Nenhum item não conforme', M + W, y + 2, { b: 1, s: 8, a: 'right' });
-  txt(REVISAO, M + W, 292, { s: 7, a: 'right' });
 
   // --- Página 2
   doc.addPage(); y = M;
@@ -513,12 +603,23 @@ function gerarPdf(r) {
   OBS_FIXAS.forEach(t => { txt('Obs.: ' + t, M, y, { s: 8 }); y += 4.2; });
   y += 2; doc.setFontSize(8); doc.setFont('helvetica', 'bold');
   const av = doc.splitTextToSize(AVISO, W); doc.text(av, M, y); y += av.length * 4 + 4;
-  if (y > 225) { doc.addPage(); y = M; }
-  const sw = 95;
-  doc.rect(M, y, sw, 24);
-  if (r.assin.condutor) doc.addImage(r.assin.condutor, 'PNG', M + 1, y + 1, sw - 2, 22);
-  txt('Assinatura Condutor Atual' + (r.condutor ? ': ' + r.condutor : ''), M, y + 28, { b: 1, s: 8 });
-  txt(REVISAO, M + W, 292, { s: 7, a: 'right' });
+  const pend = pendencias(r);
+  if (pend.length) {
+    const bh = 9 + pend.length * 4.2;
+    if (y + bh > 285) { doc.addPage(); y = M; }
+    doc.setFillColor(253, 224, 224); doc.setDrawColor(198, 40, 40); doc.setLineWidth(.6); doc.rect(M, y, W, bh, 'FD'); doc.setLineWidth(.2);
+    doc.setTextColor(198, 40, 40); txt(PENDENCIAS, M + 3, y + 5.5, { b: 1, s: 10 });
+    pend.forEach((n, i) => txt(`• ${pad2(n)} - ${ITENS[n - 1]}`, M + 6, y + 10.5 + i * 4.2, { s: 9 }));
+    doc.setTextColor(0); doc.setDrawColor(120); y += bh + 5;
+  }
+  if (y > 255) { doc.addPage(); y = M; }
+  const sw = 92;
+  [['condutor', 'Assinatura Condutor Atual' + (r.condutor ? ': ' + r.condutor : '')], ['auditor', 'Assinatura Auditor']].forEach(([k, rot], i) => {
+    const x = M + i * (sw + 6);
+    doc.rect(x, y, sw, 24);
+    if (r.assin[k]) doc.addImage(r.assin[k], 'PNG', x + 1, y + 1, sw - 2, 22);
+    txt(doc.splitTextToSize(rot, sw)[0], x, y + 28, { b: 1, s: 8 });
+  });
 
   // --- Fotos
   if (r.fotos.length) {
@@ -553,6 +654,7 @@ async function showRelatorio() {
   };
   sel.onchange = atualiza; iMes.oninput = atualiza; atualiza();
   const gerar = compartilhar => {
+    if (!iMes.value) { toast('Escolha o mês'); return; }
     const regs = doMes();
     if (!regs.length) { toast('Nenhuma inspeção neste mês'); return; }
     entregar(() => gerarRelatorio(sel.value, iMes.value, regs),
@@ -571,7 +673,7 @@ function gerarRelatorio(veic, mes, regs) {
   const M = 8, W = 281, PH = 210;
   const txt = (t, x, y, o = {}) => { doc.setFont('helvetica', o.b ? 'bold' : 'normal'); doc.setFontSize(o.s || 9); doc.text(String(t ?? ''), x, y, o.a ? { align: o.a } : undefined); };
   const [ano, m] = mes.split('-').map(Number), nd = new Date(ano, m, 0).getDate();
-  const porDia = {}; regs.forEach(r => (porDia[+r.data.slice(8, 10)] ||= []).push(r));
+  const porDia = {}; regs.forEach(r => { const d = +r.data.slice(8, 10); (porDia[d] = porDia[d] || []).push(r); });
   // vários registros no mesmo dia: NC prevalece sobre C, que prevalece sobre N/A
   const valor = (d, n) => { const v = (porDia[d] || []).map(r => r.itens[n]); return v.includes('NC') ? 'NC' : v.includes('C') ? 'C' : v.includes('NA') ? 'NA' : ''; };
   const ult = regs[regs.length - 1];
@@ -582,7 +684,7 @@ function gerarRelatorio(veic, mes, regs) {
   for (let d = 1; d <= nd; d++) ITENS.forEach((_, i) => { if (valor(d, i + 1) === 'NC') totalNc++; });
 
   // --- Página 1: grade itens x dias (igual à folha de papel)
-  doc.setFillColor(22, 120, 60); doc.rect(M, M, W, 9, 'F');
+  doc.setFillColor(22, 120, 60); doc.rect(M, M, W, 9, 'F'); logoPdf(doc, M, M, 9);
   doc.setTextColor(255); txt('RELATÓRIO MENSAL - INSPEÇÃO CHECK-LIST DE VEÍCULOS', M + W / 2, M + 6.2, { b: 1, s: 12, a: 'center' }); doc.setTextColor(0);
   let y = M + 10; const ch = 6, cw = W / 4;
   const cell = (x, label, val) => {
@@ -619,7 +721,6 @@ function gerarRelatorio(veic, mes, regs) {
   }
   grade(); y += rh + 3.5;
   txt('Legenda: C - Conforme / NC - Não conforme / N/A - Não se aplica · Dia em branco = sem inspeção · Cinza = dia inexistente no mês', M, y, { s: 7 });
-  txt(REVISAO, M + W, PH - 4, { s: 7, a: 'right' });
 
   // --- Página 2: resumo
   doc.addPage(); y = M + 4;
@@ -633,7 +734,7 @@ function gerarRelatorio(veic, mes, regs) {
   paragrafo(`Inspeções registradas: ${regs.length}   ·   Dias inspecionados: ${diasInsp} de ${nd}   ·   Itens não conformes: ${totalNc}`);
   paragrafo(`Dias sem inspeção: ${semInsp.length ? semInsp.join(', ') : 'nenhum'}`);
   if (kms.length) paragrafo(`Km inicial: ${Math.min(...kms)}   ·   Km final: ${Math.max(...kms)}   ·   Km rodados no mês: ${Math.max(...kms) - Math.min(...kms)}`);
-  const revs = regs.map(r => r.proximaRevisao).filter(Boolean); if (revs.length) paragrafo(`Próxima revisão conf. KM: ${revs[revs.length - 1]}`);
+  const revs = regs.map(r => r.proximaRevisao).filter(Boolean); if (revs.length) paragrafo(`Próxima Revisão (Km): ${revs[revs.length - 1]}`);
   const oleo = regs.map(r => r.trocaOleo).filter(Boolean); if (oleo.length) paragrafo(`Data troca do óleo: ${brData(oleo[oleo.length - 1])}`);
 
   titulo('Itens não conformes');
@@ -659,7 +760,6 @@ function gerarRelatorio(veic, mes, regs) {
     const x = M + i * (W / 3); doc.setDrawColor(0); doc.line(x + 4, y, x + W / 3 - 8, y); txt(t, x + 4, y + 4, { b: 1, s: 8 });
   });
   txt(`Gerado em ${brData(hoje())} pelo app Checklist de Veículos`, M, PH - 4, { s: 7 });
-  txt(REVISAO, M + W, PH - 4, { s: 7, a: 'right' });
   return doc;
 }
 
@@ -688,6 +788,17 @@ fetch('veiculos.json').then(r => r.json()).then(j => {
   VEICULOS = {};
   for (const k in j) VEICULOS[k] = typeof j[k] === 'string' ? V('', j[k], '', '', '') : j[k];
 }).catch(() => {});
+
+/* ---------- Condutores (colaboradores ativos que dirigem, de "2026_05_21_COLABORADORES_INVENTÁRIO.xlsx") ---------- */
+// Lista embutida; condutores.json, se existir, a substitui.
+let CONDUTORES = [
+  'Adriano Gonçalves Machado', 'Alexandre dos Santos Soares', 'Carlos Eduardo Pereira de Azambuja', 'Carmen Scherer Poerschke',
+  'Diulliane Gomes Oliveira', 'Edenilson Moura Xavier', 'Elediezer Padilha', 'Evair de Souza Lima', 'Fagner Conceição dos Passos',
+  'Fernando Barbosa Coelho', 'Gabriel Gauze da Silveira', 'Gilnei Lopes de Almeida', 'Gustavo de Oliveira da Silva',
+  'Jamil Arrighi Barrey Martins', 'Leandro', 'Lucas Vicente Nunes', 'Marcos Roberto Bertó', 'Marcos Rodrigues da Rosa',
+  'Mathias Teixeira Rodrigues', 'Micael Conceição Nogueira', 'Paulo Sérgio Medeiros Martins', 'Robson Pereira Rodrigues'
+];
+fetch('condutores.json').then(r => r.json()).then(j => { if (Array.isArray(j) && j.length) CONDUTORES = j; }).catch(() => {});
 
 /* ---------- Início ---------- */
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

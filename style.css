@@ -11,6 +11,7 @@ button:active{filter:brightness(.92);transform:scale(.98)}
 /* barra superior */
 .bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:6px;background:var(--g);color:#fff;padding:8px 8px 10px 14px;padding-top:calc(8px + env(safe-area-inset-top));box-shadow:0 2px 6px rgba(0,0,0,.25);min-height:60px}
 .bar .ttl{flex:1;min-width:0}
+.bar .logo{flex:none;height:40px;width:auto;background:#fff;border-radius:8px;padding:2px 3px;margin-right:6px}
 .bar h1{font-size:20px;margin:0;font-weight:500;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar small{display:block;font-size:12.5px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar .icon{background:none;border:0;color:#fff;width:44px;height:44px;border-radius:50%;margin-left:-8px;display:flex;align-items:center;justify-content:center}
@@ -80,6 +81,11 @@ canvas.pad{width:100%;border:2px dashed var(--bd);border-radius:12px;background:
 .hcard{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:16px;padding:12px;margin-bottom:10px;box-shadow:var(--sh);border-left:5px solid var(--g)}
 .hcard.bad{border-left-color:var(--red)}
 .hcard .av{flex:none;width:46px;height:46px;border-radius:50%;background:var(--gl);color:var(--gd);font-weight:700;display:flex;align-items:center;justify-content:center;font-size:15px}
+.hcard .av.dt{width:60px;height:64px;border-radius:14px;flex-direction:column;background:var(--g);color:#fff;gap:2px}
+.hcard.bad .av.dt{background:var(--red)}
+.hcard .av.dt b{font-size:26px;font-weight:800;line-height:1}
+.hcard .av.dt span{font-size:12px;font-weight:700;letter-spacing:1px}
+.hcard .quando{font-size:18px;font-weight:700;margin-bottom:2px}
 .hcard .i{flex:1;min-width:0}
 .hcard b{display:block;font-size:17px;font-weight:600}
 .hcard small{color:var(--mut);font-size:13px}
@@ -100,4 +106,10 @@ canvas.pad{width:100%;border:2px dashed var(--bd);border-radius:12px;background:
 .resumo div{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--bd);font-size:15px}
 .resumo div:last-child{border-bottom:0}.resumo span{color:var(--mut)}
 
+.item .top .tag{flex:none;font-size:10.5px}
+.crit.big{font-size:17px;font-weight:800;text-align:center;margin:0 0 6px;padding:14px}
+.modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.modal .box{background:var(--card);border-radius:18px;padding:16px;width:100%;max-width:440px;max-height:90vh;overflow:auto;box-shadow:0 8px 30px rgba(0,0,0,.35);border:3px solid var(--red)}
+.modal ul{margin:8px 0 4px;padding-left:22px;color:var(--red);font-weight:600;font-size:15.5px;line-height:1.6}
+.versao{text-align:center;color:var(--mut);font-size:12px;padding:18px 0 6px}
 .toast{position:fixed;left:50%;bottom:calc(var(--nav) + 20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#2b2f2d;color:#fff;padding:12px 20px;border-radius:24px;font-size:14px;z-index:40;max-width:90%;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.3)}
